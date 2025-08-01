@@ -1,6 +1,6 @@
 # Graph Voyager
 
-Graph Voyager is an interactive web application for visualizing, exploring, and analyzing graph data structures. Built with React, Vite, and Tailwind CSS, it provides an intuitive interface for users to load, view, and interact with complex graphs, making it ideal for educational, research, and development purposes.
+Graph Voyager is an interactive web application for visualizing and running algorithms on graph data structures. Built with React, Vite, and Tailwind CSS, it provides a simple interface for users to create, edit, and analyze graphs, making it ideal for learning and demonstration purposes.
 
 ## 🌐 Live Demo
 
@@ -13,25 +13,28 @@ View the latest deployed version on GitHub Pages:
 
 Graph Voyager enables users to:
 
-- **Visualize Graphs:** Render nodes and edges dynamically with smooth, responsive layouts.
-- **Explore Interactively:** Pan, zoom, and select nodes or edges to inspect their properties.
-- **Analyze Structure:** Gain insights into connectivity, paths, and relationships within your data.
-- **Custom Data:** Easily load your own graph datasets for tailored exploration.
+- **Visualize Graphs:** Draw nodes and connect them with edges on a canvas.
+- **Edit Graphs:** Add, delete, and move nodes; connect nodes with edges (including weighted and directed edges).
+- **Run Algorithms:** Step through and visualize Breadth-First Search (BFS), Depth-First Search (DFS), Dijkstra's Algorithm, and Strongly Connected Components (SCC).
+- **Sample Graphs:** Quickly generate random graphs or load sample graphs (tree, weighted, SCC).
+- **Algorithm Insights:** View algorithm progress, visited nodes, paths, and results in a sidebar.
+- **Adjust Animation:** Control the speed of algorithm animations.
 
-The project leverages modern web technologies for performance and maintainability, ensuring a seamless user experience across devices.
+
+The project leverages modern web technologies for performance and maintainability, but is currently focused on core graph editing and algorithm visualization.
 
 ---
 
 ## Sidebar Description
 
-The sidebar in Graph Voyager serves as your control panel for graph exploration. It allows you to:
+The sidebar in Graph Voyager serves as your control panel for graph algorithms and graph management. It allows you to:
 
-- **Load and Switch Graphs:** Choose from sample datasets or upload your own.
-- **Inspect Node/Edge Details:** View properties and metadata for selected elements.
-- **Apply Filters:** Focus on specific subgraphs or relationships.
-- **Access Tools:** Run algorithms, adjust visualization settings, or reset the view.
+- **Select and Run Algorithms:** Choose which algorithm to visualize and control animation speed.
+- **Switch Graph Type:** Toggle between directed and undirected graphs.
+- **Generate or Clear Graphs:** Create random graphs, load sample graphs, or clear the current graph.
+- **View Algorithm Status:** See progress, visited nodes, paths, and results as the algorithm runs.
 
-The sidebar is designed to keep essential controls and information at your fingertips, making graph analysis efficient and enjoyable.
+The sidebar is designed to keep essential controls and information at your fingertips, making graph algorithm exploration straightforward.
 
 ---
 
@@ -77,9 +80,9 @@ Pull requests and suggestions are welcome! Please open an issue to discuss your 
 
 ## TODO
 
-- Add support for weighted and directed graphs
-- Implement export and import functionality for graph data
-- Improve mobile responsiveness and accessibility
-- Add more graph algorithms (e.g., shortest path, spanning tree)
-- Enhance sidebar with collapsible sections and search
-- Write unit and integration tests
+- [ ] Add pan and zoom functionality to the canvas
+- [ ] Implement export and import (save/load) for graph data
+- [ ] Add export to image (PNG/SVG)
+- [ ] Improve mobile responsiveness and accessibility
+- [ ] Add more graph algorithms (e.g., minimum spanning tree, topological sort)
+- [ ] Enhance sidebar with collapsible sections and search
