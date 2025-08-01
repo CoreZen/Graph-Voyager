@@ -1,0 +1,59 @@
+{
+  "name": "GraphData",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the saved graph"
+    },
+    "nodes": {
+      "type": "array",
+      "description": "Array of graph nodes",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Array of graph edges",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number",
+            "default": 1
+          }
+        }
+      }
+    },
+    "isDirected": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the graph is directed"
+    }
+  },
+  "required": ["name"]
+}
