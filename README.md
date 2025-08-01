@@ -72,3 +72,14 @@ Pull requests and suggestions are welcome! Please open an issue to discuss your 
 ---
 
 **Made with ❤️ using React, Vite, and Tailwind CSS.**
+
+---
+
+## TODO
+
+- Add support for weighted and directed graphs
+- Implement export and import functionality for graph data
+- Improve mobile responsiveness and accessibility
+- Add more graph algorithms (e.g., shortest path, spanning tree)
+- Enhance sidebar with collapsible sections and search
+- Write unit and integration tests
