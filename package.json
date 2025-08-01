@@ -7,7 +7,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "postinstall": "npx tailwindcss init -p && echo '@tailwind base;\n@tailwind components;\n@tailwind utilities;' > ./tailwind.css",
-    "deploy": "vite build && gh-pages -d dist"
+    "build:ghpages": "VITE_BASE=/Graph-Voyager/ vite build",
+    "build:singlefile": "BUILD_SINGLEFILE=true VITE_BASE=./ vite build",
+    "deploy": "vite build:ghpages && gh-pages -d dist"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +26,7 @@
     "gh-pages": "^6.3.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
-    "vite": "^7.0.6"
+    "vite": "^7.0.6",
+    "vite-plugin-singlefile": "^2.3.0"
   }
 }

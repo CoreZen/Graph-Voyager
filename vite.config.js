@@ -1,18 +1,16 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { viteSingleFile } from "vite-plugin-singlefile";
 
-// https://vitejs.dev/config/
+const isSingleFile = process.env.BUILD_SINGLEFILE === "true";
+
 export default defineConfig({
-  base: "/Graph-Voyager/",
-  plugins: [react()],
+  base: process.env.VITE_BASE || "/",
+  plugins: isSingleFile ? [react(), viteSingleFile()] : [react()],
   css: {
-    preprocessorOptions: {
-      // No special config needed for Tailwind, just ensure tailwind.css is imported in your main entry
-    },
+    preprocessorOptions: {},
   },
   resolve: {
-    alias: {
-      // You can add aliases here if needed, but for now use relative imports
-    },
+    alias: {},
   },
 });
