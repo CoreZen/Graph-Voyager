@@ -1,5 +1,3 @@
-Graph Voyager/README.md
-```
 # Graph Voyager
 
 Graph Voyager is an interactive web application for visualizing, exploring, and analyzing graph data structures. Built with React, Vite, and Tailwind CSS, it provides an intuitive interface for users to load, view, and interact with complex graphs, making it ideal for educational, research, and development purposes.
