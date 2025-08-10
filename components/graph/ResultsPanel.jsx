@@ -20,21 +20,46 @@ export default function ResultsPanel({
     algorithmState.current &&
     nodes.find((n) => n.id === algorithmState.current)?.label;
 
-  // Path labels
-  const pathLabels =
-    algorithmState.path && algorithmState.path.length > 0
-      ? algorithmState.path
-          .map((id) => nodes.find((n) => n.id === id)?.label || id)
-          .join(" → ")
-      : "None";
+  // Path labels (normalize path whether it's an Array, Set, or keyed Object)
+  const pathLabels = (() => {
+    const rawPath = algorithmState.path;
+    let pathArr = [];
+    if (Array.isArray(rawPath)) {
+      pathArr = rawPath;
+    } else if (rawPath instanceof Set) {
+      pathArr = Array.from(rawPath);
+    } else if (rawPath && typeof rawPath === "object") {
+      // If algorithm produced an object, prefer values if they look like an array; otherwise use keys
+      const vals = Object.values(rawPath);
+      pathArr =
+        Array.isArray(vals) && vals.length > 0 ? vals : Object.keys(rawPath);
+    }
+    if (pathArr && pathArr.length > 0) {
+      return pathArr
+        .map((id) => nodes.find((n) => n.id === id)?.label || id)
+        .join(" → ");
+    }
+    return "None";
+  })();
 
-  // Visited nodes labels
-  const visitedLabels =
-    algorithmState.visited && algorithmState.visited.size > 0
-      ? Array.from(algorithmState.visited)
-          .map((id) => nodes.find((n) => n.id === id)?.label || id)
-          .join(", ")
-      : "None";
+  // Visited nodes labels (normalize visited whether it's Set, Array, or keyed Object)
+  const visitedLabels = (() => {
+    const rawVisited = algorithmState.visited;
+    let visitedArr = [];
+    if (rawVisited instanceof Set) {
+      visitedArr = Array.from(rawVisited);
+    } else if (Array.isArray(rawVisited)) {
+      visitedArr = rawVisited.slice();
+    } else if (rawVisited && typeof rawVisited === "object") {
+      visitedArr = Object.keys(rawVisited);
+    }
+    if (visitedArr && visitedArr.length > 0) {
+      return visitedArr
+        .map((id) => nodes.find((n) => n.id === id)?.label || id)
+        .join(", ");
+    }
+    return "None";
+  })();
 
   // SCC results
   const showSCC =
@@ -105,26 +130,45 @@ export default function ResultsPanel({
     algorithmState.queue &&
     algorithmState.queue.length > 0;
   const queueLabels = showQueue
-    ? algorithmState.queue
-        .map((id) => nodes.find((n) => n.id === id)?.label || id)
-        .join(", ")
+    ? (() => {
+        const qRaw = algorithmState.queue;
+        let qArr = [];
+        if (Array.isArray(qRaw)) {
+          qArr = qRaw;
+        } else if (qRaw instanceof Set) {
+          qArr = Array.from(qRaw);
+        } else if (qRaw && typeof qRaw === "object") {
+          const vals = Object.values(qRaw);
+          qArr =
+            Array.isArray(vals) && vals.length > 0 ? vals : Object.keys(qRaw);
+        }
+        return qArr
+          .map((id) => nodes.find((n) => n.id === id)?.label || id)
+          .join(", ");
+      })()
     : null;
 
-  // Dijkstra distances
+  // Distances (Dijkstra & Bellman-Ford)
+  // Support both Dijkstra and Bellman-Ford so distances appear for both algorithms.
   const showDistances =
-    selectedAlgorithm === "dijkstra" &&
+    (selectedAlgorithm === "dijkstra" || selectedAlgorithm === "bellmanFord") &&
     algorithmState.distances &&
     Object.keys(algorithmState.distances).length > 0;
   const distanceList = showDistances ? (
     <div className="mb-2">
-      <div className="text-xs text-slate-400 mb-1">Distances</div>
+      <div className="text-xs text-slate-400 mb-1">
+        {selectedAlgorithm === "bellmanFord"
+          ? "Distances (Bellman-Ford)"
+          : "Distances"}
+      </div>
       <div className="flex flex-wrap gap-2">
         {Object.entries(algorithmState.distances).map(([id, dist]) => {
           const node = nodes.find((n) => n.id === id);
           return (
             <span
               key={id}
-              className="px-2 py-1 rounded text-xs font-semibold bg-yellow-500 text-slate-900"
+              className="px-2 py-1 rounded text-xs font-semibold bg-amber-300 text-slate-900 shadow-sm"
+              title={`Node ${node?.label || id} — ${dist === Infinity ? "∞" : dist}`}
             >
               {node?.label || id}: {dist === Infinity ? "∞" : dist}
             </span>
@@ -189,6 +233,44 @@ export default function ResultsPanel({
         )}
         {distanceList}
         {sccList}
+        {/* Topological order display (if algorithm emitted `order`) */}
+        {algorithmState.order && algorithmState.order.length > 0 && (
+          <div className="mb-2">
+            <div className="text-xs text-slate-400 mb-1">Topological Order</div>
+            <div className="text-xs text-green-300 font-semibold">
+              {algorithmState.order
+                .map((id) => nodes.find((n) => n.id === id)?.label || id)
+                .join(" → ")}
+            </div>
+          </div>
+        )}
+        {/* Topological order violations (if any) */}
+        {algorithmState.orderViolations &&
+          algorithmState.orderViolations.length > 0 && (
+            <div className="mb-2">
+              <div className="text-xs text-rose-300 mb-2 font-medium">
+                Order Violations
+              </div>
+              <div className="space-y-2">
+                {algorithmState.orderViolations.map((v, idx) => {
+                  const fromLabel =
+                    nodes.find((n) => n.id === v.from)?.label || v.from;
+                  const toLabel =
+                    nodes.find((n) => n.id === v.to)?.label || v.to;
+                  return (
+                    <div key={idx} className="flex items-center gap-3">
+                      <div className="px-2 py-1 rounded bg-rose-600/10 border border-rose-600/20 text-rose-200 text-xs font-semibold">
+                        {fromLabel} → {toLabel}
+                      </div>
+                      <div className="text-xs text-rose-300">
+                        from index {v.fromIndex} &ge; to index {v.toIndex}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         {algorithmState.result && (
           <div className="mt-2 text-xs text-green-400 font-semibold">
             {algorithmState.result}

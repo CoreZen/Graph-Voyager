@@ -8,6 +8,7 @@ import GraphCanvas from "../components/graph/GraphCanvas";
 import AlgorithmControls from "../components/graph/AlgorithmControls";
 import NodeEdgeManager from "../components/graph/NodeEdgeManager";
 import ResultsPanel from "../components/graph/ResultsPanel";
+import algoLib from "../algorithms";
 
 export default function GraphVisualizer() {
   const [nodes, setNodes] = useState([]);
@@ -33,6 +34,8 @@ export default function GraphVisualizer() {
     // Discovery/Finish Times
     discoveryTimes: {},
     finishTimes: {},
+    // Topological order validation results (array of violating edges)
+    orderViolations: [],
   });
   const [animationSpeed, setAnimationSpeed] = useState(500);
   const [startNode, setStartNode] = useState(null);
@@ -40,10 +43,42 @@ export default function GraphVisualizer() {
   const intervalRef = useRef(null);
 
   const algorithms = {
-    bfs: { name: "Breadth-First Search", color: "#3b82f6" },
-    dfs: { name: "Depth-First Search", color: "#10b981" },
-    dijkstra: { name: "Dijkstra's Algorithm", color: "#f59e0b" },
-    scc: { name: "Strongly Connected Components", color: "#8b5cf6" },
+    bfs: {
+      name: "Breadth-First Search",
+      color: "#3b82f6",
+      description:
+        "Explores nodes level by level. Finds shortest unweighted path. Time: O(V + E), Space: O(V).",
+    },
+    dfs: {
+      name: "Depth-First Search",
+      color: "#10b981",
+      description:
+        "Explores as far as possible first. Useful for connectivity, cycles and discovery/finish times. Time: O(V + E), Space: O(V).",
+    },
+    dijkstra: {
+      name: "Dijkstra's Algorithm",
+      color: "#f59e0b",
+      description:
+        "Finds shortest weighted path (non-negative weights). Good for single-source shortest paths. Time: O(V²) in this implementation, Space: O(V).",
+    },
+    scc: {
+      name: "Strongly Connected Components",
+      color: "#8b5cf6",
+      description:
+        "Finds strongly connected components using Kosaraju's algorithm. Visualized in two DFS passes and a transpose phase. Time: O(V + E), Space: O(V).",
+    },
+    bellmanFord: {
+      name: "Bellman-Ford",
+      color: "#f97316",
+      description:
+        "Shortest paths allowing negative edge weights and detects negative cycles. Slower than Dijkstra for non-negative graphs. Time: O(V * E), Space: O(V).",
+    },
+    topologicalSort: {
+      name: "Topological Sort",
+      color: "#06b6d4",
+      description:
+        "Computes a topological ordering of a DAG using Kahn's algorithm. If a cycle exists, topological sorting is not possible.",
+    },
   };
 
   const resetAlgorithmState = useCallback(() => {
@@ -63,6 +98,7 @@ export default function GraphVisualizer() {
       showTransposed: false,
       discoveryTimes: {},
       finishTimes: {},
+      orderViolations: [],
     });
     setIsPlaying(false);
     if (intervalRef.current) {
@@ -70,397 +106,24 @@ export default function GraphVisualizer() {
     }
   }, []);
 
-  const buildPath = useCallback((previous, targetNodeId) => {
-    const path = [];
-    let current = targetNodeId;
-    while (current !== null && previous[current] !== undefined) {
-      path.unshift(current);
-      current = previous[current];
-    }
-    return path;
-  }, []);
-
-  const runBFS = useCallback(
-    (nodes, edges, startNodeId, endNodeId) => {
-      const adjList = {};
-      nodes.forEach((node) => (adjList[node.id] = []));
-      edges.forEach((edge) => {
-        adjList[edge.from].push(edge.to);
-        if (!isDirected) adjList[edge.to].push(edge.from);
-      });
-
-      const queue = [startNodeId];
-      const visited = new Set([startNodeId]);
-      const previous = { [startNodeId]: null };
-      const steps = [];
-      let found = false;
-
-      // Initial state before processing
-      steps.push({
-        visited: new Set(visited),
-        current: startNodeId,
-        queue: [...queue],
-        path: buildPath(previous, startNodeId),
-      });
-
-      while (queue.length > 0) {
-        const current = queue.shift();
-
-        if (current === endNodeId) {
-          found = true;
-          // Push the final state before breaking
-          steps.push({
-            visited: new Set(visited),
-            current: current,
-            queue: [...queue], // Queue might still have elements
-            path: buildPath(previous, current),
-          });
-          break;
-        }
-
-        const neighbors = adjList[current] || [];
-        for (const neighbor of neighbors) {
-          if (!visited.has(neighbor)) {
-            visited.add(neighbor);
-            previous[neighbor] = current;
-            queue.push(neighbor);
-            steps.push({
-              visited: new Set(visited),
-              current: neighbor, // The newly discovered node is highlighted
-              queue: [...queue],
-              path: buildPath(previous, neighbor), // Path to the newly discovered node
-            });
-          }
-        }
+  // Delegate algorithm implementations to centralized algorithms library
+  const getAlgorithmSteps = useCallback(
+    (algoKey, nodesArg, edgesArg, startNodeId, endNodeId) => {
+      const fn = algoLib[algoKey];
+      if (!fn) {
+        console.warn(`Algorithm not found: ${algoKey}`);
+        return [{ finished: true }];
       }
-
-      // Add one final step to highlight the complete path if endNode was found, or just mark as finished.
-      if (found && endNodeId) {
-        steps.push({
-          ...steps[steps.length - 1],
-          finished: true,
-          path: buildPath(previous, endNodeId),
+      try {
+        return fn(nodesArg, edgesArg, {
+          isDirected,
+          startNode: startNodeId,
+          endNode: endNodeId,
         });
-      } else if (steps.length > 0) {
-        // If endNode was not specified or not found, just mark the end of traversal
-        steps.push({ ...steps[steps.length - 1], finished: true });
-      } else {
-        // Handle case of empty graph or no start node
-        steps.push({ finished: true });
+      } catch (err) {
+        console.error("Algorithm execution error:", err);
+        return [{ finished: true }];
       }
-
-      return steps;
-    },
-    [isDirected, buildPath],
-  );
-
-  const runDFS = useCallback(
-    (nodes, edges, startNodeId, endNodeId) => {
-      const adjList = {};
-      nodes.forEach((node) => (adjList[node.id] = []));
-      edges.forEach((edge) => {
-        adjList[edge.from].push(edge.to);
-        if (!isDirected) adjList[edge.to].push(edge.from);
-      });
-
-      const steps = [];
-      const visited = new Set();
-      const previous = { [startNodeId]: null }; // Initialize previous map
-      let time = 0;
-      const discoveryTimes = {};
-      const finishTimes = {};
-      let found = false; // Flag to stop DFS early if endNode is found
-
-      const dfsVisit = (u) => {
-        if (found) return; // Stop exploring if end node is found
-
-        time++;
-        discoveryTimes[u] = time;
-        visited.add(u);
-
-        steps.push({
-          visited: new Set(visited),
-          current: u,
-          path: buildPath(previous, u), // Path to current node
-          discoveryTimes: { ...discoveryTimes },
-          finishTimes: { ...finishTimes },
-        });
-
-        if (u === endNodeId) {
-          found = true;
-          // Add final step with finish time (and mark as finished)
-          time++;
-          finishTimes[u] = time;
-          steps.push({
-            ...steps[steps.length - 1],
-            finished: true,
-            finishTimes: { ...finishTimes },
-          });
-          return;
-        }
-
-        const neighbors = adjList[u] || [];
-        for (const neighbor of neighbors) {
-          if (!visited.has(neighbor)) {
-            previous[neighbor] = u; // Record parent
-            dfsVisit(neighbor);
-            if (found) return; // Propagate the stop signal
-          }
-        }
-
-        time++;
-        finishTimes[u] = time;
-        // Add a new step to show the state after finishing this node
-        // This step will reflect the final finish time for 'u'
-        steps.push({
-          visited: new Set(visited),
-          current: u,
-          path: buildPath(previous, u),
-          discoveryTimes: { ...discoveryTimes },
-          finishTimes: { ...finishTimes },
-        });
-      };
-
-      // Start DFS from the given start node
-      const initialStartNodeExists = nodes.some((n) => n.id === startNodeId);
-      if (initialStartNodeExists && !visited.has(startNodeId)) {
-        dfsVisit(startNodeId);
-      }
-
-      // If endNode was not found, or not specified, add a final finished step.
-      if (!found) {
-        if (steps.length > 0) {
-          steps.push({ ...steps[steps.length - 1], finished: true });
-        } else {
-          steps.push({ finished: true }); // Case: no valid start node or empty graph
-        }
-      }
-
-      return steps;
-    },
-    [isDirected, buildPath],
-  );
-
-  const runDijkstra = useCallback(
-    (nodes, edges, startNodeId, endNodeId) => {
-      const adjList = {};
-      nodes.forEach((node) => (adjList[node.id] = []));
-      edges.forEach((edge) => {
-        adjList[edge.from].push({ node: edge.to, weight: edge.weight });
-        if (!isDirected)
-          adjList[edge.to].push({ node: edge.from, weight: edge.weight });
-      });
-
-      const distances = {};
-      const previous = {};
-      const visited = new Set();
-      const steps = [];
-
-      nodes.forEach((node) => {
-        distances[node.id] = node.id === startNodeId ? 0 : Infinity;
-        previous[node.id] = null;
-      });
-
-      while (visited.size < nodes.length) {
-        let current = null;
-        let minDistance = Infinity;
-
-        for (const nodeId in distances) {
-          if (!visited.has(nodeId) && distances[nodeId] < minDistance) {
-            minDistance = distances[nodeId];
-            current = nodeId;
-          }
-        }
-
-        if (current === null || distances[current] === Infinity) break;
-
-        visited.add(current);
-        steps.push({
-          visited: new Set(visited),
-          current,
-          distances: { ...distances },
-          path: buildPath(previous, endNodeId || current), // Use the common buildPath
-        });
-
-        if (current === endNodeId) break;
-
-        const neighbors = adjList[current] || [];
-        for (const { node: neighbor, weight } of neighbors) {
-          if (!visited.has(neighbor)) {
-            const newDistance = distances[current] + weight;
-            if (newDistance < distances[neighbor]) {
-              distances[neighbor] = newDistance;
-              previous[neighbor] = current;
-            }
-          }
-        }
-      }
-      return steps;
-    },
-    [isDirected, buildPath],
-  );
-
-  const runSCC = useCallback(
-    (nodes, edges) => {
-      const adj = {};
-      const adjT = {}; // Transposed graph
-      nodes.forEach((node) => {
-        adj[node.id] = [];
-        adjT[node.id] = [];
-      });
-      edges.forEach((edge) => {
-        adj[edge.from].push(edge.to);
-        adjT[edge.to].push(edge.from); // Transpose the edge direction
-      });
-
-      const steps = [];
-      let visited = new Set();
-      const finishOrderStack = []; // Stack to store nodes by finish time in DFS1
-      let time = 0; // Global time for discovery/finish times
-      const discoveryTimes1 = {};
-      const finishTimes1 = {};
-
-      // Helper for 1st DFS
-      const dfs1 = (u) => {
-        time++;
-        discoveryTimes1[u] = time;
-        visited.add(u);
-        steps.push({
-          phase: "dfs1",
-          visited: new Set(visited),
-          current: u,
-          finishOrderStack: [...finishOrderStack], // Snapshot of stack before this node finishes
-          foundSccs: [],
-          sccColors: {},
-          showTransposed: false,
-          discoveryTimes: { ...discoveryTimes1 },
-          finishTimes: { ...finishTimes1 },
-        });
-        (adj[u] || []).forEach((v) => {
-          if (!visited.has(v)) dfs1(v);
-        });
-        time++;
-        finishTimes1[u] = time;
-        finishOrderStack.push(u); // Push node to stack AFTER it finishes
-        steps.push({
-          phase: "dfs1",
-          visited: new Set(visited),
-          current: u,
-          finishOrderStack: [...finishOrderStack], // Snapshot of stack after this node finishes
-          foundSccs: [],
-          sccColors: {},
-          showTransposed: false,
-          discoveryTimes: { ...discoveryTimes1 },
-          finishTimes: { ...finishTimes1 },
-        });
-      };
-
-      // 1. First DFS pass (on original graph)
-      nodes.forEach((node) => {
-        if (!visited.has(node.id)) dfs1(node.id);
-      });
-
-      // Colors for SCCs
-      const colors = [
-        "#f87171",
-        "#fb923c",
-        "#a3e635",
-        "#4ade80",
-        "#34d399",
-        "#22d3ee",
-        "#818cf8",
-        "#a78bfa",
-        "#f472b6",
-        "#fb7185",
-        "#e879f9",
-        "#60a5fa",
-        "#d946ef",
-      ];
-
-      // Transpose phase step
-      steps.push({
-        phase: "transpose",
-        showTransposed: true,
-        finishOrderStack: [...finishOrderStack],
-        visited: new Set(),
-        current: null,
-        foundSccs: [],
-        sccColors: {},
-        discoveryTimes: {}, // Times are reset for the next phase's DFS
-        finishTimes: {},
-      });
-
-      // Helper for 2nd DFS
-      visited = new Set(); // Reset visited for the second DFS
-      const foundSccs = [];
-      const sccColors = {};
-      let sccColorIndex = 0;
-      time = 0; // Reset time for second pass
-      const discoveryTimes2 = {};
-      const finishTimes2 = {};
-
-      // Use a separate mutable array for visualization of the stack shrinking in DFS2
-      const currentFinishOrderStackForViz = [...finishOrderStack];
-
-      const dfs2 = (u, currentScc) => {
-        time++;
-        discoveryTimes2[u] = time;
-        visited.add(u);
-        currentScc.push(u);
-        sccColors[u] = colors[sccColorIndex % colors.length];
-        steps.push({
-          phase: "dfs2",
-          visited: new Set(visited),
-          current: u,
-          foundSccs: [...foundSccs, currentScc],
-          sccColors: { ...sccColors },
-          showTransposed: true,
-          finishOrderStack: [...currentFinishOrderStackForViz], // Pass the dynamically shrinking stack
-          discoveryTimes: { ...discoveryTimes2 },
-          finishTimes: { ...finishTimes2 },
-        });
-        (adjT[u] || []).forEach((v) => {
-          if (!visited.has(v)) dfs2(v, currentScc);
-        });
-        time++;
-        finishTimes2[u] = time;
-        // The outline specified this for updating previous state, making a new step that's mostly identical but with updated finishTimes.
-        steps.push({
-          ...steps[steps.length - 1],
-          finishTimes: { ...finishTimes2 },
-        });
-      };
-
-      // 2. Second DFS pass (on transposed graph)
-      // Iterate nodes in decreasing order of finish times from first DFS
-      while (currentFinishOrderStackForViz.length > 0) {
-        const u = currentFinishOrderStackForViz.pop(); // Pop from the top (latest finish time)
-
-        if (!visited.has(u)) {
-          // If node not yet visited, it's the root of a new SCC
-          const currentScc = [];
-          foundSccs.push(currentScc); // Add a new empty SCC to the list
-          dfs2(u, currentScc); // Start DFS on this new SCC
-          sccColorIndex++;
-        }
-      }
-
-      // Final step for result display
-      steps.push({
-        phase: "finished",
-        visited: new Set(visited),
-        current: null,
-        foundSccs: [...foundSccs],
-        sccColors: { ...sccColors },
-        showTransposed: false,
-        finishOrderStack: [], // Stack is now empty
-        finished: true,
-        result: `Found ${foundSccs.length} SCCs.`,
-        discoveryTimes: { ...discoveryTimes2 }, // Final discovery times
-        finishTimes: { ...finishTimes2 }, // Final finish times
-      });
-
-      return steps;
     },
     [isDirected],
   );
@@ -473,31 +136,72 @@ export default function GraphVisualizer() {
     let steps = [];
 
     try {
-      switch (selectedAlgorithm) {
-        case "bfs":
-          steps = runBFS(nodes, edges, startNode, endNode);
-          break;
-        case "dfs":
-          steps = runDFS(nodes, edges, startNode, endNode);
-          break;
-        case "dijkstra":
-          if (!endNode) {
-            alert("Please select an end node for Dijkstra's Algorithm.");
-            return;
-          }
-          steps = runDijkstra(nodes, edges, startNode, endNode);
-          break;
-        case "scc":
-          if (!isDirected) {
-            alert(
-              "Strongly Connected Components algorithm is designed for directed graphs. Please enable 'Directed Graph' mode.",
-            );
-            return;
-          }
-          steps = runSCC(nodes, edges);
-          break;
-        default:
-          return;
+      // Centralized algorithm dispatcher
+      if (selectedAlgorithm === "dijkstra" && !endNode) {
+        alert("Please select an end node for Dijkstra's Algorithm.");
+        return;
+      }
+      if (selectedAlgorithm === "bellmanFord" && !endNode) {
+        // Require explicit end node for Bellman-Ford (matches Dijkstra behavior)
+        alert("Please select an end node for Bellman-Ford.");
+        return;
+      }
+      if (selectedAlgorithm === "scc" && !isDirected) {
+        alert(
+          "Strongly Connected Components algorithm is designed for directed graphs. Please enable 'Directed Graph' mode.",
+        );
+        return;
+      }
+
+      steps = getAlgorithmSteps(
+        selectedAlgorithm,
+        nodes,
+        edges,
+        startNode,
+        endNode,
+      );
+
+      // Topological sort: validate final order (if any) against edges and expose violations
+      if (selectedAlgorithm === "topologicalSort") {
+        try {
+          const finalStep =
+            [...steps]
+              .reverse()
+              .find((s) => s && s.order && s.order.length > 0) ||
+            steps[steps.length - 1] ||
+            {};
+          const order = finalStep && finalStep.order ? finalStep.order : [];
+          const pos = {};
+          order.forEach((id, idx) => {
+            pos[id] = idx;
+          });
+          const violations = [];
+          edges.forEach((e) => {
+            // only validate directed edges (topological sort is for directed graphs)
+            if (!isDirected) return;
+            const fromPos = pos[e.from];
+            const toPos = pos[e.to];
+            // If either node isn't in the order (e.g., isolated or missing), skip
+            if (fromPos === undefined || toPos === undefined) return;
+            if (fromPos >= toPos) {
+              violations.push({
+                edgeId: e.id || `${e.from}->${e.to}`,
+                from: e.from,
+                to: e.to,
+                fromIndex: fromPos,
+                toIndex: toPos,
+              });
+            }
+          });
+          setAlgorithmState((prev) => ({
+            ...prev,
+            orderViolations: violations,
+          }));
+        } catch (err) {
+          // defensive: don't block algorithm playback if validation fails
+          console.warn("Topological validation error:", err);
+          setAlgorithmState((prev) => ({ ...prev, orderViolations: [] }));
+        }
       }
     } catch (error) {
       console.error("Algorithm error:", error);
@@ -516,11 +220,171 @@ export default function GraphVisualizer() {
 
     intervalRef.current = setInterval(() => {
       if (stepIndex < steps.length) {
-        setAlgorithmState((prev) => ({
-          ...prev,
-          ...steps[stepIndex],
-          step: stepIndex + 1,
-        }));
+        const rawStep = steps[stepIndex];
+
+        // Use functional update so we can merge/normalize relative to previous state
+        setAlgorithmState((prev) => {
+          const step = rawStep || {};
+          const next = { ...prev };
+
+          // Normalize visited -> always a Set on state
+          let visitedSet;
+          if (step.visited instanceof Set) {
+            visitedSet = new Set(step.visited);
+          } else if (Array.isArray(step.visited)) {
+            visitedSet = new Set(step.visited);
+          } else if (step.visited && typeof step.visited === "object") {
+            // keyed object -> treat keys as visited
+            visitedSet = new Set(Object.keys(step.visited));
+          } else if (step.visited === undefined) {
+            // If the algorithm step doesn't include a visited snapshot, keep previous visited (so progress reflects cumulative work)
+            visitedSet = new Set(prev.visited ? Array.from(prev.visited) : []);
+          } else {
+            visitedSet = new Set();
+          }
+
+          // Normalize queue to an array
+          let queueArr = [];
+          if (step.queue === undefined) {
+            queueArr = Array.isArray(prev.queue) ? prev.queue : [];
+          } else if (Array.isArray(step.queue)) {
+            queueArr = step.queue.slice();
+          } else {
+            try {
+              queueArr = Array.from(step.queue);
+            } catch {
+              queueArr = [];
+            }
+          }
+
+          // Normalize path to an array (used for highlighting edges)
+          let pathArr = [];
+          if (step.path === undefined) {
+            pathArr = Array.isArray(prev.path) ? prev.path : [];
+          } else if (Array.isArray(step.path)) {
+            pathArr = step.path.slice();
+          } else {
+            try {
+              pathArr = Array.from(step.path);
+            } catch {
+              pathArr = [];
+            }
+          }
+
+          // If a previous map is provided by the algorithm and no explicit path is present,
+          // reconstruct a path from that previous mapping to the selected end node (or to current)
+          if ((pathArr == null || pathArr.length === 0) && step.previous) {
+            // prefer the explicitly selected endNode, then the step's current node, then attempt to derive a target
+            let target = endNode || step.current || null;
+            if (!target) {
+              // fallback: pick the last key present in previous mapping
+              const keys = Object.keys(step.previous || {});
+              if (keys.length > 0) target = keys[keys.length - 1];
+            }
+            if (target) {
+              const rebuilt = [];
+              const seen = new Set();
+              let cur = target;
+              // Walk backwards using the previous mapping
+              while (cur !== null && cur !== undefined && !seen.has(cur)) {
+                rebuilt.unshift(cur);
+                seen.add(cur);
+                cur = step.previous[cur];
+              }
+              if (rebuilt.length > 0) {
+                pathArr = rebuilt;
+              }
+            }
+          }
+
+          // Normalize distances to a plain object
+          let distancesObj = {};
+          if (step.distances === undefined) {
+            distancesObj = prev.distances ? { ...prev.distances } : {};
+          } else if (
+            step.distances &&
+            typeof step.distances === "object" &&
+            !(step.distances instanceof Array)
+          ) {
+            distancesObj = { ...step.distances };
+          } else {
+            distancesObj = {};
+          }
+
+          // Normalize sccColors to a plain object (Map -> object)
+          let sccColorsObj = {};
+          if (step.sccColors === undefined) {
+            sccColorsObj = prev.sccColors ? { ...prev.sccColors } : {};
+          } else if (step.sccColors instanceof Map) {
+            sccColorsObj = Object.fromEntries(step.sccColors);
+          } else if (typeof step.sccColors === "object") {
+            sccColorsObj = { ...step.sccColors };
+          } else {
+            sccColorsObj = {};
+          }
+
+          // Normalize previous mapping into a plain object so UI can reconstruct paths consistently
+          let previousObj = {};
+          if (step.previous === undefined) {
+            previousObj = prev.previous ? { ...prev.previous } : {};
+          } else if (step.previous instanceof Map) {
+            previousObj = Object.fromEntries(step.previous);
+          } else if (typeof step.previous === "object") {
+            previousObj = { ...step.previous };
+          } else {
+            previousObj = {};
+          }
+
+          // Normalize order (topological sort) to an array; if present, also expose as result and mark visited
+          let orderArr = undefined;
+          if (step.order !== undefined) {
+            orderArr = Array.isArray(step.order)
+              ? step.order.slice()
+              : Array.from(step.order || []);
+          }
+
+          if (orderArr && !step.result) {
+            const labelOrder = orderArr.map((id) => {
+              const n = nodes.find((nn) => nn.id === id);
+              return (n && n.label) || id;
+            });
+            next.result = `Order: ${labelOrder.join(", ")}`;
+            // mark visited as the order so progress bar reflects nodes processed
+            visitedSet = new Set(orderArr);
+          }
+
+          // Apply all normalized pieces to next state
+          next.visited = visitedSet;
+          next.queue = queueArr;
+          next.path = pathArr;
+          next.distances = distancesObj;
+          next.sccColors = sccColorsObj;
+          // preserve the normalized previous mapping
+          next.previous = previousObj;
+          if (orderArr !== undefined) next.order = orderArr;
+
+          // Merge simple scalar/other keys from step into next
+          const scalarKeys = [
+            "current",
+            "phase",
+            "finishOrderStack",
+            "foundSccs",
+            "showTransposed",
+            "discoveryTimes",
+            "finishTimes",
+            "finished",
+            "result",
+          ];
+          scalarKeys.forEach((k) => {
+            if (step[k] !== undefined) next[k] = step[k];
+          });
+
+          // Ensure step counter is applied
+          next.step = stepIndex + 1;
+
+          return next;
+        });
+
         stepIndex++;
       } else {
         setAlgorithmState((prev) => ({ ...prev, finished: true }));
@@ -535,10 +399,7 @@ export default function GraphVisualizer() {
     edges,
     selectedAlgorithm,
     isDirected,
-    runBFS,
-    runDFS,
-    runDijkstra,
-    runSCC,
+    getAlgorithmSteps,
     animationSpeed,
     resetAlgorithmState,
   ]);
@@ -579,7 +440,14 @@ export default function GraphVisualizer() {
                     </h1>
                     <div className="flex items-center gap-3">
                       <Badge
-                        className={`bg-${algorithms[selectedAlgorithm].color}/20 text-${algorithms[selectedAlgorithm].color} border-${algorithms[selectedAlgorithm].color}/30`}
+                        className="font-semibold"
+                        style={{
+                          backgroundColor:
+                            algorithms[selectedAlgorithm].color + "22",
+                          color: algorithms[selectedAlgorithm].color,
+                          borderColor:
+                            algorithms[selectedAlgorithm].color + "40",
+                        }}
                       >
                         {algorithms[selectedAlgorithm].name}
                       </Badge>
@@ -660,6 +528,7 @@ export default function GraphVisualizer() {
                   endNode={endNode}
                   setStartNode={setStartNode}
                   setEndNode={setEndNode}
+                  setAlgorithmState={setAlgorithmState}
                 />
               </div>
             </Card>
@@ -675,6 +544,19 @@ export default function GraphVisualizer() {
               setAnimationSpeed={setAnimationSpeed}
               resetAlgorithmState={resetAlgorithmState}
             />
+
+            {/* Supplemental Algorithm Info (keeps new algorithms' descriptions visible without editing AlgorithmControls) */}
+            <Card className="bg-slate-800/50 backdrop-blur-sm border-slate-700">
+              <div className="px-6 py-4">
+                <div className="text-sm font-medium text-slate-300 mb-2">
+                  Algorithm Overview
+                </div>
+                <div className="text-xs text-slate-400">
+                  {algorithms[selectedAlgorithm]?.description ||
+                    "Select an algorithm to see a short description."}
+                </div>
+              </div>
+            </Card>
 
             <NodeEdgeManager
               isDirected={isDirected}
