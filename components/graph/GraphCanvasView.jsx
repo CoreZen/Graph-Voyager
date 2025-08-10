@@ -614,7 +614,9 @@ export default function GraphCanvasView({
       ctx.setLineDash([5, 5]);
       ctx.beginPath();
       ctx.moveTo(connectStart.x, connectStart.y);
-      ctx.lineTo(mousePos.x, mousePos.y);
+      const guideX = mousePos.x;
+      const guideY = mousePos.y;
+      ctx.lineTo(guideX, guideY);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -745,7 +747,9 @@ export default function GraphCanvasView({
 
   const handleMouseMove = (e) => {
     const { x, y } = getScaledCoords(e);
-    setMousePos({ x, y });
+    const worldX = (x - pan.x) / scale;
+    const worldY = (y - pan.y) / scale;
+    setMousePos({ x: worldX, y: worldY });
 
     if (isPanning) {
       const last = panLastRef.current || { x: e.clientX, y: e.clientY };
@@ -813,19 +817,27 @@ export default function GraphCanvasView({
       const rect = canvas.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
-      const delta = -e.deltaY;
-      const zoomFactor = delta > 0 ? 1.1 : 0.9;
+      // Normalize wheel delta across devices and use magnitude for snappier zoom
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1; // line/page -> approx px
+      const delta = -e.deltaY * unit;
+      const mag = Math.min(1, Math.abs(delta) / 120); // clamp magnitude
+      const step = 1 + mag * 0.5; // up to 50% per tick
+      const zoomFactor = delta > 0 ? step : 1 / step;
 
       const prevScale = scaleRef.current || scale;
       const prevPan = panRef.current || pan;
-      const newScale = Math.min(3, Math.max(0.3, prevScale * zoomFactor));
+      const newScale = Math.min(4, Math.max(0.2, prevScale * zoomFactor));
 
       const worldX = (cx - prevPan.x) / prevScale;
       const worldY = (cy - prevPan.y) / prevScale;
       const newPanX = cx - worldX * newScale;
       const newPanY = cy - worldY * newScale;
 
-      animateTo({ x: newPanX, y: newPanY }, newScale, 220);
+      // Immediate update for snappier zoom (avoid animation lag)
+      setScale(newScale);
+      setPan({ x: newPanX, y: newPanY });
+      scaleRef.current = newScale;
+      panRef.current = { x: newPanX, y: newPanY };
     };
     canvas.addEventListener("wheel", handleWheel, { passive: false });
     return () => {
@@ -880,12 +892,18 @@ export default function GraphCanvasView({
               const y = t.clientY - rect.top;
               const worldX = (x - pan.x) / scale;
               const worldY = (y - pan.y) / scale;
+              setMousePos({ x: worldX, y: worldY });
               setNodes((prev) =>
                 prev.map((n) =>
                   n.id === dragNode.id ? { ...n, x: worldX, y: worldY } : n,
                 ),
               );
             } else if (isPanning) {
+              const x = t.clientX - rect.left;
+              const y = t.clientY - rect.top;
+              const worldX = (x - pan.x) / scale;
+              const worldY = (y - pan.y) / scale;
+              setMousePos({ x: worldX, y: worldY });
               const last = panLastRef.current || { x: t.clientX, y: t.clientY };
               const dx = t.clientX - last.x;
               const dy = t.clientY - last.y;

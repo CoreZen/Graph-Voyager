@@ -9,7 +9,7 @@
     "postinstall": "npx tailwindcss init -p && echo '@tailwind base;\n@tailwind components;\n@tailwind utilities;' > ./tailwind.css",
     "build:ghpages": "VITE_BASE=/Graph-Voyager/ vite build",
     "build:singlefile": "BUILD_SINGLEFILE=true VITE_BASE=./ vite build",
-    "deploy": "vite build:ghpages && gh-pages -d dist"
+    "deploy": "npm run build:ghpages && gh-pages -d dist"
   },
   "keywords": [],
   "author": "",
